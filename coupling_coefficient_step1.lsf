@@ -1,0 +1,17 @@
+clear;
+S = getresult("FDTD::ports::bottom_right","S");
+power_coupling = abs(S.S)^2;
+f=S.f;
+lambda=S.lambda;
+fname="coupling_coefficient.txt";
+
+if (fileexists(fname)) { rm(fname);} 
+
+for(i=1:length(f)){ # loop over the length of the data
+    write("coupling_coefficient.txt",num2str(f(i))+" "+num2str(power_coupling(i)));
+}
+
+plot(lambda*1e6,power_coupling*100);
+legend("coupling coefficient");
+setplot("x label", "wavelength [um]");
+setplot("y label", "coupling coefficient [%]");
