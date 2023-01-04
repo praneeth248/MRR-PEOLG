@@ -1,0 +1,121 @@
+#########  The script reads tha temperature map from the 2D monitor  #############
+###########   It finds the elements that fall inside the two rings    ############
+## It then integrates the temperature over those elements and finds the average T##
+
+clear;
+
+rings = [6];  # rings numbers
+Nr = length(rings);
+active = 6;  # number of the active ring
+
+# read temperature data
+
+temperature = getresult("::model::HEAT::monitor_2D","temperature");
+dT_0p1mK = temperature.T - (300 - 0.1e-3);
+temperature.addattribute('dT',dT_0p1mK); # delta T to 300-0.1mK ref
+
+Vapplied = getdata("::model::HEAT::monitor_2D","temperature","V_V_R"+num2str(active)+"_in");
+NV = length(Vapplied);
+area = pinch(temperature.area);
+ID = pinch(temperature.ID);
+elements = temperature.elements;
+x = pinch(temperature.x);
+y = pinch(temperature.y);
+
+
+# more variables
+Tavg = matrix(4,1,NV); # Two ring, each has 4 quarters
+Tring = matrix(1,NV);
+N_element = length(ID);  # number of elements
+N_vtx = length(x);  # number of vertices
+
+# create the polygon data for ring
+r1 = getnamed("R6","inner radius");
+r2 = getnamed("R6","outer radius");
+r = (r1+r2)/2;
+
+for (j=1:Nr) {  #  sweep for rings
+    
+    x_c = getnamed('R'+num2str(rings(j)),'x');
+    y_c = getnamed('R'+num2str(rings(j)),'y');
+    ?"Ring = R"+num2str(rings(j));
+    
+    for (k=1:NV) {  # sweep for voltage
+        
+        ?"Vapplied = "+num2str(Vapplied(k))+" V";
+        T = pinch(pinch(temperature.T),2,k);
+        
+        for (i=1:4) {  # sweep for four quarters of each ring
+            
+            theta = 90*(i-1):90*i;
+            theta = theta*pi/180;
+            
+            poly = [ [x_c+r2*cos(theta) , y_c+r2*sin(theta)] ; [x_c+r1*cos(flip(theta,1)) , y_c+r1*sin(flip(theta,1))] ];
+            
+            area_poly = abs(polyarea(poly));
+            
+            # find the elements inside WG1
+            
+            diff = N_element - N_vtx;
+            
+            dummy = matrix(diff,1);
+            
+            x_padded = [x;dummy];  # make the length of x equal to the number of elements
+            y_padded = [y;dummy];  # make the length of y equal to the number of elements
+            
+            x_center = (x_padded(elements(1:N_element,1)) + x_padded(elements(1:N_element,2)) + x_padded(elements(1:N_element,3))) / 3;  # x-coordinate of centroids
+            y_center = (y_padded(elements(1:N_element,1)) + y_padded(elements(1:N_element,2)) + y_padded(elements(1:N_element,3))) / 3;  # y-coordinate of centroids
+            
+            
+            flag_wg = inpoly(poly,x_center,y_center);  # find the element list that falls inside waveguide
+            
+            # create element matrix for the waveguides
+            
+            element_index_wg = find(flag_wg == 1);
+            
+            elements_wg = elements(element_index_wg,1:3);
+            
+            # integrate the temperature over the elements inside the waveguides and divide by area
+            
+            T_sum = quadtri(elements_wg,[x,y],T);
+            
+            area_wg = sum(area(element_index_wg));
+            
+            delta_area_wg = area_poly-area_wg;  # some area might be outside simulation - assume 300K
+            
+            Tavg(i,j,k) = (T_sum + delta_area_wg*300) / area_poly;
+            
+            ?"Average temperature of part "+num2str(i)+" = "+num2str(Tavg(i,j,k))+" K.";
+            
+        }
+       # Tring(j,k) = sum(Tavg(1:4,j,k))/4;
+    }
+}
+
+# Get input power
+
+I = pinch(getdata('HEAT','boundaries','I_V_R'+num2str(active)+'_in'));
+Pin = Vapplied*I;
+
+matlabsave('Tref',Tavg,Vapplied,Pin);
+
+##
+#if (fileexists('Tavg.txt')) { rm('Tavg.txt');}
+#write('Tavg.txt',"active, cross, Vapplied, Pin");
+
+#for(i=1:length(Pin)){ # loop over the length of the data
+    
+    #Pin_tmp = zeros(4,1)+Pin(i);
+    #T_active = pinch(Tavg(:,2,i));
+    #T_passive = pinch(Tavg(:,1,i));
+    
+    #for(j=1:length(T_active)){
+        #write('Tavg.txt',num2str(T_active(j)) +", "+ num2str(T_passive(j)) +", "+ num2str(Vapplied(i))+", "+ num2str(Pin(i)));
+    #}
+#}
+
+
+#plot(Pin*1e3,Tring(2,:),"Pin (mW)","Tavg(K)");
+#legend("active ring");
+#plot(Pin*1e3,Tring(1,:),"Pin (mW)","Tavg(K)");
+#legend("crosstalk");
