@@ -1,0 +1,21 @@
+switchtolayout;
+m = "sweep_voltage";
+runsweep(m);
+
+
+n_eff = getsweepresult(m, "n_eff");
+v = pinch(n_eff.voltage);
+neff = n_eff.neff;
+dn_eff = matrix(length(v),1);
+
+fname="Delta_neff_bias.txt";
+
+if (fileexists(fname)) { rm(fname);} 
+
+for(i=1:length(v)){ # loop over the length of the data
+    dn_eff(i) = neff(i)-neff(1);
+    write(fname,num2str(v(i))+" "+num2str(real(dn_eff(i)))+" "+num2str(imag(dn_eff(i))));
+}
+
+plot(abs(v),dn_eff,"abs(voltage[V])","dn_eff");
+legend("real(dn_eff)","imag(dn_eff)");
